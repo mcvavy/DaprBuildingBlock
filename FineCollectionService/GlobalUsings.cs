@@ -3,3 +3,5 @@ global using FineCollectionService.Helpers;
 global using FineCollectionService.Models;
 global using FineCollectionService.Proxies;
 global using Microsoft.AspNetCore.Mvc;
+global using Dapr.Client;
+global using Dapr;

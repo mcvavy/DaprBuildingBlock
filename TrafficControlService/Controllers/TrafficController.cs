@@ -1,9 +1,57 @@
-﻿namespace TrafficControlService.Controllers;
+﻿using Dapr.Actors;
+using Dapr.Actors.Client;
+using Dapr.Client;
+using TrafficControlService.Actors;
+
+namespace TrafficControlService.Controllers;
 
 [ApiController]
 [Route("")]
 public class TrafficController : ControllerBase
 {
+    private readonly IActorProxyFactory _actorProxyFactory;
+
+    public TrafficController(IActorProxyFactory actorProxyFactory)
+    {
+        _actorProxyFactory = actorProxyFactory;
+    }
+
+
+    [HttpPost("entrycam")]
+    public async Task<ActionResult> VehicleEntryAsync(VehicleRegistered msg, [FromServices] DaprClient daprClient)
+    {
+        try
+        {
+            var actorId = new ActorId(msg.LicenseNumber);
+            var proxy = _actorProxyFactory.CreateActorProxy<IVehicleActor>(actorId, nameof(VehicleActor));
+            await proxy.RegisterEntryAsync(msg);
+            return Ok();
+        }
+        catch (System.Exception)
+        {
+            return StatusCode(500);
+        }
+    }
+
+
+    [HttpPost("exitcam")]
+    public async Task<ActionResult> VehicleExitAsync(VehicleRegistered msg, [FromServices] DaprClient daprClient)
+    {
+        try
+        {
+            var actorId = new ActorId(msg.LicenseNumber);
+            var proxy = _actorProxyFactory.CreateActorProxy<IVehicleActor>(actorId, nameof(VehicleActor));
+            await proxy.RegisterExitAsync(msg);
+            return Ok();
+        }
+        catch (System.Exception)
+        {
+            return StatusCode(500);
+        }
+    }
+
+
+    /*
     private readonly HttpClient _httpClient;
     private readonly IVehicleStateRepository _vehicleStateRepository;
     private readonly ILogger<TrafficController> _logger;
@@ -22,6 +70,7 @@ public class TrafficController : ControllerBase
         _speedingViolationCalculator = speedingViolationCalculator;
         _roadId = speedingViolationCalculator.GetRoadId();
     }
+
 
     [HttpPost("entrycam")]
     public async Task<ActionResult> VehicleEntry(VehicleRegistered msg)
@@ -49,7 +98,7 @@ public class TrafficController : ControllerBase
     }
 
     [HttpPost("exitcam")]
-    public async Task<ActionResult> VehicleExit(VehicleRegistered msg)
+    public async Task<ActionResult> VehicleExit(VehicleRegistered msg, [FromServices] DaprClient daprClient)
     {
         try
         {
@@ -86,7 +135,10 @@ public class TrafficController : ControllerBase
 
                 // publish speedingviolation
                 var message = JsonContent.Create<SpeedingViolation>(speedingViolation);
-                await _httpClient.PostAsync("http://localhost:6001/collectfine", message);
+                //await _httpClient.PostAsync("http://localhost:6001/collectfine", message);
+                //await _httpClient.PostAsync("http://localhost:3600/v1.0/publish/pubsub/speedingviolations", message);
+                // publish speedingviolation
+                await daprClient.PublishEventAsync("pubsub", "speedingviolations", speedingViolation);
             }
 
             return Ok();
@@ -96,4 +148,5 @@ public class TrafficController : ControllerBase
             return StatusCode(500);
         }
     }
+    */
 }

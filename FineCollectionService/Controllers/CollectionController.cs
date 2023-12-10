@@ -8,24 +8,28 @@ public class CollectionController : ControllerBase
     private readonly ILogger<CollectionController> _logger;
     private readonly IFineCalculator _fineCalculator;
     private readonly VehicleRegistrationService _vehicleRegistrationService;
+    private readonly DaprClient _daprClient;
 
     public CollectionController(IConfiguration config, ILogger<CollectionController> logger,
-        IFineCalculator fineCalculator, VehicleRegistrationService vehicleRegistrationService)
+        IFineCalculator fineCalculator, VehicleRegistrationService vehicleRegistrationService, DaprClient daprClient)
     {
         _logger = logger;
         _fineCalculator = fineCalculator;
         _vehicleRegistrationService = vehicleRegistrationService;
+        _daprClient = daprClient;
 
         // set finecalculator component license-key
         if (_fineCalculatorLicenseKey == null)
         {
-            _fineCalculatorLicenseKey = config.GetValue<string>("fineCalculatorLicenseKey");
+            var secrets = _daprClient.GetSecretAsync("trafficcontrol-secrets", "finecalculator.licensekey").Result;
+            _fineCalculatorLicenseKey = secrets["finecalculator.licensekey"];
         }
     }
 
+    [Topic("pubsub", "speedingviolations")]
     [Route("collectfine")]
     [HttpPost()]
-    public async Task<ActionResult> CollectFine(SpeedingViolation speedingViolation)
+    public async Task<ActionResult> CollectFine(SpeedingViolation speedingViolation, [FromServices] DaprClient daprClient)
     {
         decimal fine = _fineCalculator.CalculateFine(_fineCalculatorLicenseKey!, speedingViolation.ViolationInKmh);
 
@@ -43,6 +47,16 @@ public class CollectionController : ControllerBase
 
         // send fine by email
         // TODO
+        var body = EmailUtils.CreateEmailBody(speedingViolation, vehicleInfo, fineString);
+
+        var metadata = new Dictionary<string, string>
+        {
+            ["emailFrom"] = "noreply@cfca.gov",
+            ["emailTo"] = vehicleInfo.OwnerEmail,
+            ["subject"] = $"Speeding violation on the {speedingViolation.RoadId}"
+        };
+
+        await daprClient.InvokeBindingAsync("sendmail", "create", body, metadata);
 
         return Ok();
     }
